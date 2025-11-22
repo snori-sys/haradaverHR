@@ -25,6 +25,8 @@ export default function AdminRegisterPage() {
     setLoading(true)
 
     try {
+      console.log('Sending registration request:', { email: formData.email, name: formData.name })
+      
       const response = await fetch('/api/admin/register', {
         method: 'POST',
         headers: {
@@ -33,10 +35,16 @@ export default function AdminRegisterPage() {
         body: JSON.stringify(formData),
       })
 
+      console.log('Registration response status:', response.status)
+
       const data = await response.json()
+      console.log('Registration response data:', data)
 
       if (!response.ok) {
-        setError(data.error || '登録に失敗しました')
+        const errorMessage = data.error || '登録に失敗しました'
+        const errorDetails = data.details ? ` (詳細: ${data.details})` : ''
+        setError(`${errorMessage}${errorDetails}`)
+        console.error('Registration error:', data)
         setLoading(false)
         return
       }
