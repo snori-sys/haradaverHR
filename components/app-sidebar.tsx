@@ -1,6 +1,6 @@
 'use client'
 
-import { LayoutDashboard, Users, Bell, Settings, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Users, Bell, Settings, Menu, X, Send } from 'lucide-react'
 import Link from "next/link"
 import { usePathname } from 'next/navigation'
 import { cn } from "@/lib/utils"
@@ -27,6 +27,11 @@ const navigation = [
     name: 'アラート管理',
     href: '/admin/alerts',
     icon: Bell,
+  },
+  {
+    name: 'プッシュ通知',
+    href: '/admin/push-notifications',
+    icon: Send,
   },
   {
     name: 'マスタ設定',

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { AuthUtils } from '@/lib/auth'
 
-// 管理者が顧客一覧を取得するAPI
+// 通知履歴を取得するAPI
 export async function GET(request: NextRequest) {
   try {
     // 認証チェック
@@ -24,28 +24,23 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // 顧客一覧を取得（アクティブな顧客のみ）
-    const { data: customers, error } = await supabase
-      .from('customers')
-      .select('id, name, phone_number, email, is_active')
-      .eq('is_active', true)
+    // 通知履歴を取得（最新順）
+    const { data: notifications, error } = await supabase
+      .from('push_notifications')
+      .select('id, title, body, sent_count, failed_count, status, created_at, sent_at')
       .order('created_at', { ascending: false })
+      .limit(50)
 
     if (error) {
-      console.error('Error fetching customers:', error)
+      console.error('Error fetching notifications:', error)
       return NextResponse.json(
-        { error: '顧客一覧の取得に失敗しました' },
+        { error: '通知履歴の取得に失敗しました' },
         { status: 500 }
       )
     }
 
     return NextResponse.json({
-      customers: (customers || []).map((customer) => ({
-        id: customer.id,
-        name: customer.name,
-        phoneNumber: customer.phone_number,
-        email: customer.email,
-      })),
+      notifications: notifications || [],
     })
   } catch (error) {
     console.error('Unexpected error:', error)
@@ -55,3 +50,4 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+

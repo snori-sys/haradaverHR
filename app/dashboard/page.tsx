@@ -11,6 +11,7 @@ import { ja } from 'date-fns/locale'
 import { LogOut, Gift } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PushNotificationSubscribe } from '@/components/push-notification-subscribe'
 
 interface Customer {
   id: string
@@ -241,6 +242,9 @@ export default function CustomerDashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* プッシュ通知設定 */}
+        <PushNotificationSubscribe />
 
         {/* タブ */}
         <Tabs defaultValue="visits" className="space-y-4">
