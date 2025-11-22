@@ -12,14 +12,6 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // 開発環境のみ許可（本番環境では削除または適切な認証を実装）
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json(
-        { error: '本番環境では管理者登録は無効です' },
-        { status: 403 }
-      )
-    }
-
     const body = await request.json()
     
     // バリデーション

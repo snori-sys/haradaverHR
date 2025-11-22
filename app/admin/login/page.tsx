@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -127,6 +128,12 @@ export default function AdminLoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'ログイン中...' : 'ログイン'}
             </Button>
+
+            <div className="text-center text-sm">
+              <Link href="/admin/register" className="text-primary hover:underline">
+                アカウントをお持ちでない方は登録
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

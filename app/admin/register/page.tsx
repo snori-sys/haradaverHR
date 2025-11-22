@@ -83,9 +83,9 @@ export default function AdminRegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>管理者アカウント登録</CardTitle>
+          <CardTitle>管理者登録</CardTitle>
           <CardDescription>
-            開発環境でのみ利用可能です
+            名前、メールアドレス、パスワードを入力して登録してください
           </CardDescription>
         </CardHeader>
         <CardContent>
