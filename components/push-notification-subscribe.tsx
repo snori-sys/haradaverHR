@@ -26,12 +26,18 @@ export function PushNotificationSubscribe() {
     // ブラウザがプッシュ通知をサポートしているか確認
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true)
-      checkSubscription().then((hasSubscription) => {
+      
+      // 少し遅延させてから初期化（Service Workerの準備を待つ）
+      const timer = setTimeout(async () => {
+        const hasSubscription = await checkSubscription()
         // サブスクリプションがない場合、自動的に有効化を試みる
-        if (!hasSubscription) {
-          autoSubscribe()
+        if (!hasSubscription && !isLoading) {
+          console.log('No subscription found, attempting auto-subscribe...')
+          await autoSubscribe()
         }
-      })
+      }, 1000) // 1秒待つ
+      
+      return () => clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -80,8 +86,15 @@ export function PushNotificationSubscribe() {
 
   const autoSubscribe = async () => {
     // 既にローディング中またはサブスクリプション済みの場合はスキップ
-    if (isLoading || isSubscribed) {
-      console.log('Skipping auto-subscribe: isLoading=', isLoading, 'isSubscribed=', isSubscribed)
+    if (isLoading) {
+      console.log('Skipping auto-subscribe: already loading')
+      return
+    }
+
+    // 再チェック（状態が更新されている可能性があるため）
+    const hasSubscription = await checkSubscription()
+    if (hasSubscription) {
+      console.log('Skipping auto-subscribe: already subscribed')
       return
     }
 
@@ -122,6 +135,7 @@ export function PushNotificationSubscribe() {
               setTimeout(() => setMessage(null), 5000)
             } else {
               console.log('Permission denied or dismissed')
+              // 許可が拒否された場合でも、エラーメッセージは表示しない（ユーザーが手動で有効化できるため）
             }
           } catch (error: any) {
             console.error('Permission request failed:', error)
