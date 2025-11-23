@@ -53,19 +53,52 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // VAPIDキーを検証・トリム（先頭・末尾の空白を削除）
+    const trimmedPublicKey = vapidPublicKey.trim()
+    const trimmedPrivateKey = vapidPrivateKey.trim()
+    const trimmedMailto = (vapidMailto || 'mailto:admin@example.com').trim()
+
+    // VAPIDキーの形式を簡易チェック
+    if (!trimmedPublicKey || trimmedPublicKey.length < 20) {
+      console.error('Invalid VAPID public key format:', trimmedPublicKey?.length)
+      return NextResponse.json(
+        { 
+          error: 'VAPID公開キーの形式が正しくありません',
+          details: 'VAPID_PUBLIC_KEYが正しく設定されているか確認してください'
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!trimmedPrivateKey || trimmedPrivateKey.length < 20) {
+      console.error('Invalid VAPID private key format:', trimmedPrivateKey?.length)
+      return NextResponse.json(
+        { 
+          error: 'VAPID秘密キーの形式が正しくありません',
+          details: 'VAPID_PRIVATE_KEYが正しく設定されているか確認してください'
+        },
+        { status: 500 }
+      )
+    }
+
     // VAPIDキーを設定
     try {
       webpush.setVapidDetails(
-        vapidMailto || 'mailto:admin@example.com',
-        vapidPublicKey,
-        vapidPrivateKey
+        trimmedMailto,
+        trimmedPublicKey,
+        trimmedPrivateKey
       )
     } catch (error) {
       console.error('Error setting VAPID details:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorStack = error instanceof Error ? error.stack : undefined
+      
       return NextResponse.json(
         { 
           error: 'VAPIDキーの設定に失敗しました',
-          details: error instanceof Error ? error.message : undefined
+          details: process.env.NODE_ENV === 'development' 
+            ? `${errorMessage}${errorStack ? `\n${errorStack}` : ''}`
+            : 'VAPIDキーの形式を確認してください'
         },
         { status: 500 }
       )
