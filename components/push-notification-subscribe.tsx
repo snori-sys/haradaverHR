@@ -26,8 +26,14 @@ export function PushNotificationSubscribe() {
     // ブラウザがプッシュ通知をサポートしているか確認
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true)
-      checkSubscription()
+      checkSubscription().then((hasSubscription) => {
+        // サブスクリプションがない場合、自動的に有効化を試みる
+        if (!hasSubscription) {
+          autoSubscribe()
+        }
+      })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const checkSubscription = async () => {
@@ -43,24 +49,50 @@ export function PushNotificationSubscribe() {
           },
         })
         setIsSubscribed(true)
+        return true
       } else {
         setIsSubscribed(false)
+        return false
       }
     } catch (error) {
       console.error('Error checking subscription:', error)
+      return false
     }
   }
 
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer)
-    let binary = ''
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i])
+  const autoSubscribe = async () => {
+    // 既にローディング中またはサブスクリプション済みの場合はスキップ
+    if (isLoading) {
+      return
     }
-    return btoa(binary)
+
+    try {
+      // 通知許可の状態を確認
+      if ('Notification' in window && 'permission' in Notification) {
+        const permission = Notification.permission
+        
+        // 許可が既に与えられている場合、自動的に有効化
+        if (permission === 'granted') {
+          console.log('Notification permission already granted, auto-subscribing...')
+          // subscribe関数を直接呼び出すのではなく、内部ロジックを実行
+          await performSubscribe()
+        } else if (permission === 'default') {
+          // まだ許可を求めていない場合、自動的に許可を求める
+          console.log('Requesting notification permission...')
+          const result = await Notification.requestPermission()
+          if (result === 'granted') {
+            await performSubscribe()
+          }
+        }
+        // permission === 'denied' の場合は何もしない（ユーザーが拒否した場合）
+      }
+    } catch (error) {
+      console.error('Error in auto-subscribe:', error)
+      // エラーが発生しても、ユーザーが手動で有効化できるようにする
+    }
   }
 
-  const subscribe = async () => {
+  const performSubscribe = async () => {
     setIsLoading(true)
     try {
       // Service Workerを登録（next-pwaが自動的に登録している可能性があるが、念のため）
@@ -114,6 +146,28 @@ export function PushNotificationSubscribe() {
         throw new Error('サブスクリプションの保存に失敗しました')
       }
 
+      console.log('Push notification auto-subscribed successfully')
+    } catch (error: any) {
+      console.error('Error auto-subscribing:', error)
+      // エラーが発生しても、ユーザーが手動で有効化できるようにする
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    return btoa(binary)
+  }
+
+  const subscribe = async () => {
+    setIsLoading(true)
+    try {
+      await performSubscribe()
       setMessage({ type: 'success', text: 'プッシュ通知を有効にしました。オトクな情報をお届けします！' })
       setTimeout(() => setMessage(null), 5000)
     } catch (error: any) {
