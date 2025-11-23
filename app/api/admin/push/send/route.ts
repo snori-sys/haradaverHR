@@ -8,7 +8,7 @@ import webpush from 'web-push'
 const sendNotificationSchema = z.object({
   title: z.string().min(1, 'タイトルを入力してください'),
   body: z.string().min(1, '本文を入力してください'),
-  url: z.string().url('正しいURLを入力してください').optional().or(z.literal('')),
+  url: z.string().optional().or(z.literal('')),
   customerIds: z.array(z.string().uuid()).optional(),
 })
 
@@ -37,18 +37,39 @@ export async function POST(request: NextRequest) {
     const vapidMailto = process.env.VAPID_MAILTO
 
     if (!vapidPublicKey || !vapidPrivateKey) {
+      console.error('VAPID keys not found:', {
+        hasPublicKey: !!vapidPublicKey,
+        hasPrivateKey: !!vapidPrivateKey,
+        hasMailto: !!vapidMailto,
+      })
       return NextResponse.json(
-        { error: 'VAPIDキーが設定されていません' },
+        { 
+          error: 'VAPIDキーが設定されていません',
+          details: process.env.NODE_ENV === 'development' 
+            ? 'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_MAILTO が環境変数に設定されているか確認してください' 
+            : undefined
+        },
         { status: 500 }
       )
     }
 
     // VAPIDキーを設定
-    webpush.setVapidDetails(
-      vapidMailto || 'mailto:admin@example.com',
-      vapidPublicKey,
-      vapidPrivateKey
-    )
+    try {
+      webpush.setVapidDetails(
+        vapidMailto || 'mailto:admin@example.com',
+        vapidPublicKey,
+        vapidPrivateKey
+      )
+    } catch (error) {
+      console.error('Error setting VAPID details:', error)
+      return NextResponse.json(
+        { 
+          error: 'VAPIDキーの設定に失敗しました',
+          details: error instanceof Error ? error.message : undefined
+        },
+        { status: 500 }
+      )
+    }
 
     const body = await request.json()
     const validatedData = sendNotificationSchema.parse(body)
@@ -212,8 +233,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('Unexpected error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'サーバーエラーが発生しました'
+    const errorStack = error instanceof Error ? error.stack : undefined
+    
+    // 開発環境では詳細なエラー情報を返す
     return NextResponse.json(
-      { error: 'サーバーエラーが発生しました' },
+      { 
+        error: 'サーバーエラーが発生しました',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+      },
       { status: 500 }
     )
   }
