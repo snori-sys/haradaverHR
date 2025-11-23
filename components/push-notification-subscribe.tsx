@@ -45,22 +45,24 @@ export function PushNotificationSubscribe() {
   const checkSubscription = async () => {
     try {
       // Service Workerの準備を待つ（タイムアウト付き）
-      let registration
+      // next-pwaが自動的にService Workerを登録するので、readyを待つ
+      let registration: ServiceWorkerRegistration
+      
       try {
+        // next-pwaが自動登録するService Workerを待つ
+        console.log('Waiting for Service Worker to be ready...')
         registration = await Promise.race([
           navigator.serviceWorker.ready,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker timeout')), 10000))
-        ]) as ServiceWorkerRegistration
+          new Promise<ServiceWorkerRegistration>((_, reject) => 
+            setTimeout(() => reject(new Error('Service Worker timeout')), 20000)
+          )
+        ])
+        console.log('Service Worker ready')
       } catch (error) {
         console.error('Service Worker not ready:', error)
-        // Service Workerが準備できていない場合は、登録を試みる
-        try {
-          registration = await navigator.serviceWorker.register('/sw.js')
-          await registration.update()
-        } catch (regError) {
-          console.error('Service Worker registration failed:', regError)
-          throw new Error('Service Workerの登録に失敗しました')
-        }
+        // Service Workerが見つからない場合は、エラーをスローせず、falseを返す
+        // next-pwaが自動的に登録するまで待つ
+        return false
       }
       
       const sub = await registration.pushManager.getSubscription()
@@ -156,24 +158,22 @@ export function PushNotificationSubscribe() {
       console.log('Starting subscription process...')
       
       // Service Workerの準備を待つ（タイムアウト付き）
-      let registration
+      // next-pwaが自動的にService Workerを登録するので、readyを待つ
+      let registration: ServiceWorkerRegistration
+      
       try {
+        // next-pwaが自動登録するService Workerを待つ
+        console.log('Waiting for Service Worker to be ready...')
         registration = await Promise.race([
           navigator.serviceWorker.ready,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker timeout')), 10000))
-        ]) as ServiceWorkerRegistration
-        console.log('Service Worker ready')
+          new Promise<ServiceWorkerRegistration>((_, reject) => 
+            setTimeout(() => reject(new Error('Service Worker timeout')), 20000)
+          )
+        ])
+        console.log('Service Worker ready for subscription')
       } catch (error) {
-        console.error('Service Worker not ready, trying to register...', error)
-        // Service Workerが準備できていない場合は、登録を試みる
-        try {
-          registration = await navigator.serviceWorker.register('/sw.js')
-          await new Promise(resolve => setTimeout(resolve, 1000)) // 少し待つ
-          console.log('Service Worker registered')
-        } catch (regError) {
-          console.error('Service Worker registration failed:', regError)
-          throw new Error('Service Workerの登録に失敗しました。ページを再読み込みしてください。')
-        }
+        console.error('Service Worker not available:', error)
+        throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
       }
       
       // VAPID公開キーを取得
