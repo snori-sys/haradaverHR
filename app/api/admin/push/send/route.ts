@@ -56,7 +56,12 @@ export async function POST(request: NextRequest) {
     // VAPIDキーを検証・トリム（先頭・末尾の空白を削除）
     const trimmedPublicKey = vapidPublicKey.trim()
     const trimmedPrivateKey = vapidPrivateKey.trim()
-    const trimmedMailto = (vapidMailto || 'mailto:admin@example.com').trim()
+    
+    // VAPID_MAILTOにmailto:プレフィックスがない場合は追加
+    let trimmedMailto = (vapidMailto || 'mailto:admin@example.com').trim()
+    if (trimmedMailto && !trimmedMailto.startsWith('mailto:')) {
+      trimmedMailto = `mailto:${trimmedMailto}`
+    }
 
     // VAPIDキーの形式を簡易チェック
     if (!trimmedPublicKey || trimmedPublicKey.length < 20) {
@@ -83,22 +88,40 @@ export async function POST(request: NextRequest) {
 
     // VAPIDキーを設定
     try {
+      console.log('Setting VAPID details:', {
+        mailto: trimmedMailto,
+        publicKeyLength: trimmedPublicKey.length,
+        privateKeyLength: trimmedPrivateKey.length,
+        publicKeyPrefix: trimmedPublicKey.substring(0, 10),
+      })
+      
       webpush.setVapidDetails(
         trimmedMailto,
         trimmedPublicKey,
         trimmedPrivateKey
       )
+      
+      console.log('VAPID details set successfully')
     } catch (error) {
       console.error('Error setting VAPID details:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       const errorStack = error instanceof Error ? error.stack : undefined
+      
+      // エラーの詳細をログに出力
+      console.error('VAPID key details:', {
+        mailto: trimmedMailto,
+        publicKeyLength: trimmedPublicKey.length,
+        privateKeyLength: trimmedPrivateKey.length,
+        hasPublicKey: !!trimmedPublicKey,
+        hasPrivateKey: !!trimmedPrivateKey,
+      })
       
       return NextResponse.json(
         { 
           error: 'VAPIDキーの設定に失敗しました',
           details: process.env.NODE_ENV === 'development' 
             ? `${errorMessage}${errorStack ? `\n${errorStack}` : ''}`
-            : 'VAPIDキーの形式を確認してください'
+            : `エラー: ${errorMessage}。VAPIDキーの形式を確認してください。`
         },
         { status: 500 }
       )
