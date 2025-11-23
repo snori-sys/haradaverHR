@@ -46,22 +46,43 @@ export function PushNotificationSubscribe() {
     try {
       // Service Workerの準備を待つ（タイムアウト付き）
       // next-pwaが自動的にService Workerを登録するので、readyを待つ
-      let registration: ServiceWorkerRegistration
+      let registration: ServiceWorkerRegistration | null = null
       
       try {
-        // next-pwaが自動登録するService Workerを待つ
-        console.log('Waiting for Service Worker to be ready...')
-        registration = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<ServiceWorkerRegistration>((_, reject) => 
-            setTimeout(() => reject(new Error('Service Worker timeout')), 20000)
-          )
-        ])
-        console.log('Service Worker ready')
+        // まず、既存のService Workerの登録を確認
+        registration = await navigator.serviceWorker.getRegistration() || null
+        
+        if (!registration) {
+          // 既存の登録がない場合、next-pwaが自動登録するまで待つ
+          console.log('Waiting for Service Worker to be ready...')
+          try {
+            registration = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise<ServiceWorkerRegistration>((_, reject) => 
+                setTimeout(() => reject(new Error('Service Worker timeout')), 30000)
+              )
+            ])
+            console.log('Service Worker ready')
+          } catch (timeoutError) {
+            console.error('Service Worker timeout:', timeoutError)
+            // タイムアウトした場合でも、既存の登録を再確認
+            registration = await navigator.serviceWorker.getRegistration() || null
+            if (!registration) {
+              console.log('Service Worker not found after timeout')
+              return false
+            }
+          }
+        } else {
+          console.log('Using existing Service Worker registration')
+        }
       } catch (error) {
         console.error('Service Worker not ready:', error)
         // Service Workerが見つからない場合は、エラーをスローせず、falseを返す
-        // next-pwaが自動的に登録するまで待つ
+        return false
+      }
+      
+      if (!registration) {
+        console.log('Service Worker registration not found')
         return false
       }
       
@@ -159,20 +180,40 @@ export function PushNotificationSubscribe() {
       
       // Service Workerの準備を待つ（タイムアウト付き）
       // next-pwaが自動的にService Workerを登録するので、readyを待つ
-      let registration: ServiceWorkerRegistration
+      let registration: ServiceWorkerRegistration | null = null
       
       try {
-        // next-pwaが自動登録するService Workerを待つ
-        console.log('Waiting for Service Worker to be ready...')
-        registration = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<ServiceWorkerRegistration>((_, reject) => 
-            setTimeout(() => reject(new Error('Service Worker timeout')), 20000)
-          )
-        ])
-        console.log('Service Worker ready for subscription')
+        // まず、既存のService Workerの登録を確認
+        registration = await navigator.serviceWorker.getRegistration() || null
+        
+        if (!registration) {
+          // 既存の登録がない場合、next-pwaが自動登録するまで待つ
+          console.log('Waiting for Service Worker to be ready...')
+          try {
+            registration = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise<ServiceWorkerRegistration>((_, reject) => 
+                setTimeout(() => reject(new Error('Service Worker timeout')), 30000)
+              )
+            ])
+            console.log('Service Worker ready for subscription')
+          } catch (timeoutError) {
+            console.error('Service Worker timeout:', timeoutError)
+            // タイムアウトした場合でも、既存の登録を再確認
+            registration = await navigator.serviceWorker.getRegistration() || null
+            if (!registration) {
+              throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
+            }
+          }
+        } else {
+          console.log('Using existing Service Worker registration for subscription')
+        }
       } catch (error) {
         console.error('Service Worker not available:', error)
+        throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
+      }
+      
+      if (!registration) {
         throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
       }
       
