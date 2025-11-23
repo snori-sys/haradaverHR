@@ -38,7 +38,25 @@ export function PushNotificationSubscribe() {
 
   const checkSubscription = async () => {
     try {
-      const registration = await navigator.serviceWorker.ready
+      // Service Workerの準備を待つ（タイムアウト付き）
+      let registration
+      try {
+        registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker timeout')), 10000))
+        ]) as ServiceWorkerRegistration
+      } catch (error) {
+        console.error('Service Worker not ready:', error)
+        // Service Workerが準備できていない場合は、登録を試みる
+        try {
+          registration = await navigator.serviceWorker.register('/sw.js')
+          await registration.update()
+        } catch (regError) {
+          console.error('Service Worker registration failed:', regError)
+          throw new Error('Service Workerの登録に失敗しました')
+        }
+      }
+      
       const sub = await registration.pushManager.getSubscription()
       if (sub) {
         setSubscription({
@@ -62,29 +80,55 @@ export function PushNotificationSubscribe() {
 
   const autoSubscribe = async () => {
     // 既にローディング中またはサブスクリプション済みの場合はスキップ
-    if (isLoading) {
+    if (isLoading || isSubscribed) {
+      console.log('Skipping auto-subscribe: isLoading=', isLoading, 'isSubscribed=', isSubscribed)
       return
     }
 
     try {
+      console.log('Starting auto-subscribe...')
+      
+      // Service Workerが利用可能か確認
+      if (!('serviceWorker' in navigator)) {
+        console.log('Service Worker not supported')
+        return
+      }
+
       // 通知許可の状態を確認
       if ('Notification' in window && 'permission' in Notification) {
         const permission = Notification.permission
+        console.log('Notification permission:', permission)
         
         // 許可が既に与えられている場合、自動的に有効化
         if (permission === 'granted') {
           console.log('Notification permission already granted, auto-subscribing...')
-          // subscribe関数を直接呼び出すのではなく、内部ロジックを実行
-          await performSubscribe()
+          try {
+            await performSubscribe()
+            setMessage({ type: 'success', text: 'プッシュ通知を自動的に有効にしました！' })
+            setTimeout(() => setMessage(null), 5000)
+          } catch (error: any) {
+            console.error('Auto-subscribe failed:', error)
+            // エラーはperformSubscribe内で既に処理されている
+          }
         } else if (permission === 'default') {
           // まだ許可を求めていない場合、自動的に許可を求める
           console.log('Requesting notification permission...')
-          const result = await Notification.requestPermission()
-          if (result === 'granted') {
-            await performSubscribe()
+          try {
+            const result = await Notification.requestPermission()
+            console.log('Permission result:', result)
+            if (result === 'granted') {
+              await performSubscribe()
+              setMessage({ type: 'success', text: 'プッシュ通知を自動的に有効にしました！' })
+              setTimeout(() => setMessage(null), 5000)
+            } else {
+              console.log('Permission denied or dismissed')
+            }
+          } catch (error: any) {
+            console.error('Permission request failed:', error)
           }
+        } else {
+          console.log('Permission denied, skipping auto-subscribe')
         }
-        // permission === 'denied' の場合は何もしない（ユーザーが拒否した場合）
       }
     } catch (error) {
       console.error('Error in auto-subscribe:', error)
@@ -95,23 +139,50 @@ export function PushNotificationSubscribe() {
   const performSubscribe = async () => {
     setIsLoading(true)
     try {
-      // Service Workerを登録（next-pwaが自動的に登録している可能性があるが、念のため）
-      const registration = await navigator.serviceWorker.ready
+      console.log('Starting subscription process...')
+      
+      // Service Workerの準備を待つ（タイムアウト付き）
+      let registration
+      try {
+        registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker timeout')), 10000))
+        ]) as ServiceWorkerRegistration
+        console.log('Service Worker ready')
+      } catch (error) {
+        console.error('Service Worker not ready, trying to register...', error)
+        // Service Workerが準備できていない場合は、登録を試みる
+        try {
+          registration = await navigator.serviceWorker.register('/sw.js')
+          await new Promise(resolve => setTimeout(resolve, 1000)) // 少し待つ
+          console.log('Service Worker registered')
+        } catch (regError) {
+          console.error('Service Worker registration failed:', regError)
+          throw new Error('Service Workerの登録に失敗しました。ページを再読み込みしてください。')
+        }
+      }
       
       // VAPID公開キーを取得
+      console.log('Fetching VAPID public key...')
       const response = await fetch('/api/push/public-key')
+      if (!response.ok) {
+        throw new Error(`VAPID公開キーの取得に失敗しました（${response.status}）`)
+      }
       const data = await response.json()
       const publicKey = data.publicKey
 
       if (!publicKey) {
         throw new Error('VAPID公開キーが取得できませんでした')
       }
+      console.log('VAPID public key received')
 
       // プッシュ通知の許可を求める
+      console.log('Subscribing to push notifications...')
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
       })
+      console.log('Push subscription created')
 
       const pushSubscription: PushSubscription = {
         endpoint: subscription.endpoint,
@@ -130,6 +201,7 @@ export function PushNotificationSubscribe() {
         throw new Error('ログインが必要です')
       }
 
+      console.log('Saving subscription to server...')
       const saveResponse = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: {
@@ -143,13 +215,20 @@ export function PushNotificationSubscribe() {
       })
 
       if (!saveResponse.ok) {
-        throw new Error('サブスクリプションの保存に失敗しました')
+        const errorData = await saveResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'サブスクリプションの保存に失敗しました')
       }
 
-      console.log('Push notification auto-subscribed successfully')
+      console.log('Push notification subscribed successfully')
     } catch (error: any) {
-      console.error('Error auto-subscribing:', error)
-      // エラーが発生しても、ユーザーが手動で有効化できるようにする
+      console.error('Error in performSubscribe:', error)
+      // エラーメッセージを表示
+      setMessage({ 
+        type: 'error', 
+        text: error.message || 'プッシュ通知の登録に失敗しました。もう一度お試しください。' 
+      })
+      setTimeout(() => setMessage(null), 10000)
+      throw error // エラーを再スローして、呼び出し元でも処理できるようにする
     } finally {
       setIsLoading(false)
     }
