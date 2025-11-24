@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     // 顧客一覧を取得（アクティブな顧客のみ）
     const { data: customers, error } = await supabase
       .from('customers')
-      .select('id, name, phone_number, email, is_active')
+      .select('id, name, phone_number, email, current_points, total_earned_points, total_used_points, first_visit_date, last_visit_date, created_at, is_active')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
 
@@ -45,6 +45,13 @@ export async function GET(request: NextRequest) {
         name: customer.name,
         phoneNumber: customer.phone_number,
         email: customer.email,
+        currentPoints: customer.current_points || 0,
+        totalEarnedPoints: customer.total_earned_points || 0,
+        totalUsedPoints: customer.total_used_points || 0,
+        firstVisitDate: customer.first_visit_date,
+        lastVisitDate: customer.last_visit_date,
+        createdAt: customer.created_at,
+        isActive: customer.is_active,
       })),
     })
   } catch (error) {
