@@ -27,17 +27,37 @@ export function PushNotificationSubscribe() {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true)
       
-      // 少し遅延させてから初期化（Service Workerの準備を待つ）
-      const timer = setTimeout(async () => {
+      // 即座に自動有効化を試みる（デフォルトで有効化）
+      const initAutoSubscribe = async () => {
+        // まず、既存のサブスクリプションをチェック
         const hasSubscription = await checkSubscription()
+        
         // サブスクリプションがない場合、自動的に有効化を試みる
         if (!hasSubscription && !isLoading) {
-          console.log('No subscription found, attempting auto-subscribe...')
-          await autoSubscribe()
+          console.log('No subscription found, attempting auto-subscribe immediately...')
+          // 少し待ってから自動有効化を試みる（Service Workerの準備を待つ）
+          setTimeout(async () => {
+            await autoSubscribe()
+          }, 2000) // 2秒待つ（Service Workerの準備時間）
         }
-      }, 1000) // 1秒待つ
+      }
       
-      return () => clearTimeout(timer)
+      // 即座に実行
+      initAutoSubscribe()
+      
+      // さらに、定期的にチェックして、まだ有効化されていない場合は再試行
+      const retryInterval = setInterval(async () => {
+        const hasSubscription = await checkSubscription()
+        if (!hasSubscription && !isLoading && Notification.permission === 'granted') {
+          console.log('Retrying auto-subscribe...')
+          await autoSubscribe()
+        } else if (hasSubscription) {
+          // サブスクリプションが有効になったら、再試行を停止
+          clearInterval(retryInterval)
+        }
+      }, 5000) // 5秒ごとにチェック
+      
+      return () => clearInterval(retryInterval)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -122,7 +142,7 @@ export function PushNotificationSubscribe() {
     }
 
     try {
-      console.log('Starting auto-subscribe...')
+      console.log('Starting auto-subscribe (default enabled)...')
       
       // Service Workerが利用可能か確認
       if (!('serviceWorker' in navigator)) {
@@ -147,15 +167,22 @@ export function PushNotificationSubscribe() {
             // エラーはperformSubscribe内で既に処理されている
           }
         } else if (permission === 'default') {
-          // まだ許可を求めていない場合、自動的に許可を求める
-          console.log('Requesting notification permission...')
+          // まだ許可を求めていない場合、自動的に許可を求める（デフォルトで有効化）
+          console.log('Requesting notification permission automatically (default enabled)...')
           try {
             const result = await Notification.requestPermission()
             console.log('Permission result:', result)
             if (result === 'granted') {
-              await performSubscribe()
-              setMessage({ type: 'success', text: 'プッシュ通知を自動的に有効にしました！' })
-              setTimeout(() => setMessage(null), 5000)
+              // 許可が得られたら、少し待ってからサブスクリプションを登録（Service Workerの準備を待つ）
+              setTimeout(async () => {
+                try {
+                  await performSubscribe()
+                  setMessage({ type: 'success', text: 'プッシュ通知を自動的に有効にしました！' })
+                  setTimeout(() => setMessage(null), 5000)
+                } catch (error: any) {
+                  console.error('Auto-subscribe after permission grant failed:', error)
+                }
+              }, 1000)
             } else {
               console.log('Permission denied or dismissed')
               // 許可が拒否された場合でも、エラーメッセージは表示しない（ユーザーが手動で有効化できるため）
@@ -178,44 +205,60 @@ export function PushNotificationSubscribe() {
     try {
       console.log('Starting subscription process...')
       
-      // Service Workerの準備を待つ（タイムアウト付き）
+      // Service Workerの準備を待つ（より柔軟なアプローチ）
       // next-pwaが自動的にService Workerを登録するので、readyを待つ
       let registration: ServiceWorkerRegistration | null = null
       
-      try {
-        // まず、既存のService Workerの登録を確認
-        registration = await navigator.serviceWorker.getRegistration() || null
-        
-        if (!registration) {
-          // 既存の登録がない場合、next-pwaが自動登録するまで待つ
-          console.log('Waiting for Service Worker to be ready...')
+      // ポーリングでService Workerの登録を待つ（最大60秒）
+      const maxAttempts = 30 // 30回試行
+      const pollInterval = 2000 // 2秒ごと
+      
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          // 既存の登録を確認
+          registration = await navigator.serviceWorker.getRegistration() || null
+          
+          if (registration) {
+            console.log(`Service Worker found on attempt ${attempt + 1}`)
+            break
+          }
+          
+          // まだ登録されていない場合、readyを待つ（短いタイムアウト）
           try {
             registration = await Promise.race([
               navigator.serviceWorker.ready,
               new Promise<ServiceWorkerRegistration>((_, reject) => 
-                setTimeout(() => reject(new Error('Service Worker timeout')), 30000)
+                setTimeout(() => reject(new Error('Service Worker ready timeout')), pollInterval)
               )
             ])
-            console.log('Service Worker ready for subscription')
-          } catch (timeoutError) {
-            console.error('Service Worker timeout:', timeoutError)
-            // タイムアウトした場合でも、既存の登録を再確認
-            registration = await navigator.serviceWorker.getRegistration() || null
-            if (!registration) {
-              throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
+            console.log(`Service Worker ready on attempt ${attempt + 1}`)
+            break
+          } catch (readyError) {
+            // readyがタイムアウトした場合、次の試行に進む
+            console.log(`Service Worker not ready yet, attempt ${attempt + 1}/${maxAttempts}`)
+            if (attempt < maxAttempts - 1) {
+              // 最後の試行でない場合、少し待ってから再試行
+              await new Promise(resolve => setTimeout(resolve, pollInterval))
             }
           }
-        } else {
-          console.log('Using existing Service Worker registration for subscription')
+        } catch (error) {
+          console.error(`Error on attempt ${attempt + 1}:`, error)
+          if (attempt < maxAttempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval))
+          }
         }
-      } catch (error) {
-        console.error('Service Worker not available:', error)
-        throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
+      }
+      
+      // 最終確認
+      if (!registration) {
+        registration = await navigator.serviceWorker.getRegistration() || null
       }
       
       if (!registration) {
         throw new Error('Service Workerが見つかりませんでした。ページを再読み込みしてください。')
       }
+      
+      console.log('Service Worker registration confirmed')
       
       // VAPID公開キーを取得
       console.log('Fetching VAPID public key...')
