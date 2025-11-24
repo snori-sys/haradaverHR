@@ -37,6 +37,17 @@ interface Notification {
   sent_at: string | null
 }
 
+interface Subscription {
+  id: string
+  customerId: string
+  customerName: string
+  customerPhone: string
+  customerEmail: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export default function PushNotificationsPage() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -45,12 +56,14 @@ export default function PushNotificationsPage() {
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
     loadCustomers()
     loadNotifications()
+    loadSubscriptions()
   }, [])
 
   const loadCustomers = async () => {
@@ -90,6 +103,26 @@ export default function PushNotificationsPage() {
       }
     } catch (error) {
       console.error('Error loading notifications:', error)
+    }
+  }
+
+  const loadSubscriptions = async () => {
+    const token = localStorage.getItem('admin_token')
+    if (!token) return
+
+    try {
+      const response = await fetch('/api/admin/push/subscriptions', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSubscriptions(data.subscriptions || [])
+      }
+    } catch (error) {
+      console.error('Error loading subscriptions:', error)
     }
   }
 
@@ -178,6 +211,10 @@ export default function PushNotificationsPage() {
           <TabsTrigger value="history">
             <History className="w-4 h-4 mr-2" />
             送信履歴
+          </TabsTrigger>
+          <TabsTrigger value="subscriptions">
+            <Users className="w-4 h-4 mr-2" />
+            サブスクリプション状態
           </TabsTrigger>
         </TabsList>
 
@@ -352,6 +389,65 @@ export default function PushNotificationsPage() {
                 {notifications.length === 0 && (
                   <div className="text-center text-muted-foreground py-8">
                     送信履歴がありません
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="subscriptions">
+          <Card>
+            <CardHeader>
+              <CardTitle>プッシュ通知サブスクリプション状態</CardTitle>
+              <CardDescription>
+                顧客がプッシュ通知を有効にしているかどうかを確認できます
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm text-yellow-800">
+                  <strong>重要:</strong> プッシュ通知を送信するには、顧客がダッシュボードでプッシュ通知を有効にする必要があります。
+                  現在、{subscriptions.filter((s) => s.isActive).length}人の顧客がプッシュ通知を有効にしています。
+                </p>
+              </div>
+              <div className="space-y-4">
+                {subscriptions.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    サブスクリプションがありません。顧客がプッシュ通知を有効にする必要があります。
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {subscriptions.map((subscription) => (
+                      <div
+                        key={subscription.id}
+                        className="border rounded-lg p-4 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="font-semibold">{subscription.customerName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {subscription.customerPhone}
+                            {subscription.customerEmail && ` / ${subscription.customerEmail}`}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            登録日: {format(new Date(subscription.createdAt), 'yyyy年MM月dd日 HH:mm', { locale: ja })}
+                          </div>
+                        </div>
+                        <Badge variant={subscription.isActive ? 'default' : 'secondary'}>
+                          {subscription.isActive ? (
+                            <>
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              有効
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3 h-3 mr-1" />
+                              無効
+                            </>
+                          )}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
