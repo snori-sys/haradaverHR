@@ -206,16 +206,74 @@ export function PushNotificationSubscribe() {
       console.log('Starting subscription process...')
       
       // Service Workerの準備を待つ（より柔軟なアプローチ）
-      // next-pwaが自動的にService Workerを登録するので、readyを待つ
       let registration: ServiceWorkerRegistration | null = null
       
-      // ポーリングでService Workerの登録を待つ（最大60秒）
-      const maxAttempts = 30 // 30回試行
-      const pollInterval = 2000 // 2秒ごと
+      // まず、既存の登録を確認
+      registration = await navigator.serviceWorker.getRegistration() || null
       
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (!registration) {
+        console.log('No existing Service Worker registration found, attempting to register manually...')
+        
+        // next-pwaが自動登録しない場合、手動で登録を試みる
         try {
-          // 既存の登録を確認
+          // next-pwaが生成するService Workerファイルを探す
+          const swPaths = [
+            '/sw.js',
+            '/sw.js.map',
+            '/_next/static/chunks/sw.js',
+            '/workbox-*.js',
+          ]
+          
+          // まず、readyを短時間待つ
+          try {
+            registration = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise<ServiceWorkerRegistration>((_, reject) => 
+                setTimeout(() => reject(new Error('Service Worker ready timeout')), 3000)
+              )
+            ])
+            console.log('Service Worker ready')
+          } catch (readyError) {
+            console.log('Service Worker ready timeout, trying manual registration...')
+            
+            // 手動でService Workerを登録
+            try {
+              registration = await navigator.serviceWorker.register('/sw.js', {
+                scope: '/',
+              })
+              console.log('Service Worker registered manually:', registration)
+              
+              // 登録後、少し待つ
+              await new Promise(resolve => setTimeout(resolve, 1000))
+            } catch (registerError) {
+              console.error('Manual Service Worker registration failed:', registerError)
+              // フォールバック: workboxファイルを探す
+              try {
+                // workboxファイルを動的に探す（実際のファイル名はビルド時に生成される）
+                const response = await fetch('/sw.js')
+                if (response.ok) {
+                  registration = await navigator.serviceWorker.register('/sw.js', {
+                    scope: '/',
+                  })
+                  console.log('Service Worker registered via /sw.js')
+                }
+              } catch (fallbackError) {
+                console.error('Fallback Service Worker registration failed:', fallbackError)
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Service Worker registration error:', error)
+        }
+      }
+      
+      // まだ登録されていない場合、ポーリングで待つ（最大30秒）
+      if (!registration) {
+        console.log('Polling for Service Worker registration...')
+        const maxAttempts = 15 // 15回試行
+        const pollInterval = 2000 // 2秒ごと
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           registration = await navigator.serviceWorker.getRegistration() || null
           
           if (registration) {
@@ -223,26 +281,6 @@ export function PushNotificationSubscribe() {
             break
           }
           
-          // まだ登録されていない場合、readyを待つ（短いタイムアウト）
-          try {
-            registration = await Promise.race([
-              navigator.serviceWorker.ready,
-              new Promise<ServiceWorkerRegistration>((_, reject) => 
-                setTimeout(() => reject(new Error('Service Worker ready timeout')), pollInterval)
-              )
-            ])
-            console.log(`Service Worker ready on attempt ${attempt + 1}`)
-            break
-          } catch (readyError) {
-            // readyがタイムアウトした場合、次の試行に進む
-            console.log(`Service Worker not ready yet, attempt ${attempt + 1}/${maxAttempts}`)
-            if (attempt < maxAttempts - 1) {
-              // 最後の試行でない場合、少し待ってから再試行
-              await new Promise(resolve => setTimeout(resolve, pollInterval))
-            }
-          }
-        } catch (error) {
-          console.error(`Error on attempt ${attempt + 1}:`, error)
           if (attempt < maxAttempts - 1) {
             await new Promise(resolve => setTimeout(resolve, pollInterval))
           }

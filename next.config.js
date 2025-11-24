@@ -4,6 +4,8 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development', // 開発環境ではPWAを無効化
   buildExcludes: [/middleware-manifest\.json$/],
+  sw: 'sw.js', // Service Workerファイル名を明示的に指定
+  publicExcludes: ['!sw.js', '!workbox-*.js'], // Service Workerファイルをpublicに含める
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
