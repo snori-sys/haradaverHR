@@ -263,29 +263,46 @@ export function PushNotificationSubscribe() {
           } catch (readyError) {
             console.log('Service Worker ready timeout, trying manual registration...')
             
-            // 手動でService Workerを登録
-            try {
-              registration = await navigator.serviceWorker.register('/sw.js', {
-                scope: '/',
-              })
-              console.log('Service Worker registered manually:', registration)
-              
-              // 登録後、少し待つ
-              await new Promise(resolve => setTimeout(resolve, 1000))
-            } catch (registerError) {
-              console.error('Manual Service Worker registration failed:', registerError)
-              // フォールバック: workboxファイルを探す
+            // 手動でService Workerを登録（複数のパスを試行）
+            const swPaths = [
+              '/sw.js',
+              '/_next/static/chunks/sw.js',
+              '/workbox-*.js',
+            ]
+            
+            let registered = false
+            for (const swPath of swPaths) {
               try {
-                // workboxファイルを動的に探す（実際のファイル名はビルド時に生成される）
-                const response = await fetch('/sw.js')
+                // まず、ファイルが存在するか確認
+                const response = await fetch(swPath, { method: 'HEAD' })
                 if (response.ok) {
-                  registration = await navigator.serviceWorker.register('/sw.js', {
+                  registration = await navigator.serviceWorker.register(swPath, {
                     scope: '/',
                   })
-                  console.log('Service Worker registered via /sw.js')
+                  console.log(`Service Worker registered manually via ${swPath}:`, registration)
+                  registered = true
+                  // 登録後、少し待つ
+                  await new Promise(resolve => setTimeout(resolve, 1000))
+                  break
                 }
-              } catch (fallbackError) {
-                console.error('Fallback Service Worker registration failed:', fallbackError)
+              } catch (pathError) {
+                console.log(`Failed to register via ${swPath}, trying next path...`)
+                continue
+              }
+            }
+            
+            if (!registered) {
+              console.error('All Service Worker registration paths failed')
+              // 最後の試行: next-pwaが生成する可能性のあるパスを試行
+              try {
+                // next-pwaは通常、ビルド時にpublic/sw.jsを生成する
+                // しかし、Vercelでは別のパスにある可能性がある
+                registration = await navigator.serviceWorker.register('/sw.js', {
+                  scope: '/',
+                })
+                console.log('Service Worker registered via /sw.js (final attempt)')
+              } catch (finalError) {
+                console.error('Final Service Worker registration attempt failed:', finalError)
               }
             }
           }

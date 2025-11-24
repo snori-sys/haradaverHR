@@ -6,6 +6,8 @@ const withPWA = require('next-pwa')({
   buildExcludes: [/middleware-manifest\.json$/],
   sw: 'sw.js', // Service Workerファイル名を明示的に指定
   publicExcludes: ['!sw.js', '!workbox-*.js'], // Service Workerファイルをpublicに含める
+  // カスタムService Workerを使用（既存のsw.jsをマージ）
+  swSrc: 'public/sw.js', // 既存のService Workerファイルをソースとして使用
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
