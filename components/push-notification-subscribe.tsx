@@ -27,29 +27,56 @@ export function PushNotificationSubscribe() {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true)
       
-      // 即座に自動有効化を試みる（デフォルトで有効化）
-      const initAutoSubscribe = async () => {
-        // まず、既存のサブスクリプションをチェック
-        const hasSubscription = await checkSubscription()
-        
-        // サブスクリプションがない場合、自動的に有効化を試みる
-        if (!hasSubscription && !isLoading) {
-          console.log('No subscription found, attempting auto-subscribe immediately...')
-          // 少し待ってから自動有効化を試みる（Service Workerの準備を待つ）
-          setTimeout(async () => {
-            await autoSubscribe()
-          }, 2000) // 2秒待つ（Service Workerの準備時間）
+      // 即座に通知許可をリクエスト（デフォルトで有効化）
+      const requestPermissionImmediately = async () => {
+        // 通知許可の状態を確認
+        if ('Notification' in window && 'permission' in Notification) {
+          const permission = Notification.permission
+          console.log('Current notification permission:', permission)
+          
+          // まだ許可を求めていない場合、即座に許可をリクエスト
+          if (permission === 'default') {
+            console.log('Requesting notification permission immediately...')
+            try {
+              const result = await Notification.requestPermission()
+              console.log('Permission request result:', result)
+              
+              if (result === 'granted') {
+                console.log('Permission granted! Will subscribe after Service Worker is ready...')
+                // 許可が得られたら、Service Workerの準備を待ってからサブスクリプションを登録
+                setTimeout(async () => {
+                  await autoSubscribe()
+                }, 3000) // 3秒待つ（Service Workerの準備時間）
+              } else {
+                console.log('Permission denied or dismissed:', result)
+              }
+            } catch (error) {
+              console.error('Error requesting permission:', error)
+            }
+          } else if (permission === 'granted') {
+            // 既に許可されている場合、自動的に有効化を試みる
+            console.log('Permission already granted, checking subscription...')
+            const hasSubscription = await checkSubscription()
+            if (!hasSubscription) {
+              console.log('No subscription found, attempting auto-subscribe...')
+              setTimeout(async () => {
+                await autoSubscribe()
+              }, 2000)
+            }
+          } else {
+            console.log('Permission denied, user must enable manually')
+          }
         }
       }
       
-      // 即座に実行
-      initAutoSubscribe()
+      // 即座に実行（Service Workerの準備を待たない）
+      requestPermissionImmediately()
       
       // さらに、定期的にチェックして、まだ有効化されていない場合は再試行
       const retryInterval = setInterval(async () => {
         const hasSubscription = await checkSubscription()
         if (!hasSubscription && !isLoading && Notification.permission === 'granted') {
-          console.log('Retrying auto-subscribe...')
+          console.log('Retrying auto-subscribe (permission granted but not subscribed)...')
           await autoSubscribe()
         } else if (hasSubscription) {
           // サブスクリプションが有効になったら、再試行を停止
@@ -382,6 +409,30 @@ export function PushNotificationSubscribe() {
   const subscribe = async () => {
     setIsLoading(true)
     try {
+      // まず、通知許可を確認・リクエスト
+      if ('Notification' in window && 'permission' in Notification) {
+        const permission = Notification.permission
+        
+        if (permission === 'default') {
+          console.log('Requesting notification permission from button click...')
+          const result = await Notification.requestPermission()
+          console.log('Permission result:', result)
+          
+          if (result !== 'granted') {
+            setMessage({ type: 'error', text: '通知許可が必要です。ブラウザの設定で通知を許可してください。' })
+            setTimeout(() => setMessage(null), 5000)
+            setIsLoading(false)
+            return
+          }
+        } else if (permission === 'denied') {
+          setMessage({ type: 'error', text: '通知が拒否されています。ブラウザの設定で通知を許可してください。' })
+          setTimeout(() => setMessage(null), 5000)
+          setIsLoading(false)
+          return
+        }
+      }
+      
+      // 許可が得られたら、サブスクリプションを登録
       await performSubscribe()
       setMessage({ type: 'success', text: 'プッシュ通知を有効にしました。オトクな情報をお届けします！' })
       setTimeout(() => setMessage(null), 5000)
